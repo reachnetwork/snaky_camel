@@ -38,7 +38,9 @@ describe SnakyCamel::Middleware do
           input: 'collegeId=purdue-global&collegeName=Purdue+Global')
         described_class.new(->(e) { [200, {}, ['{}']] }).call(env)
 
-        expect(env['rack.request.form_pairs']).to contain_exactly(
+        pairs = env['rack.request.form_pairs']
+        skip 'Rack 2 has no rack.request.form_pairs (params come from form_hash)' unless pairs
+        expect(pairs).to contain_exactly(
           ['college_id', 'purdue-global'], ['college_name', 'Purdue Global'])
       end
     end
