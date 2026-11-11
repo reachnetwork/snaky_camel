@@ -54,6 +54,25 @@ describe SnakyCamel::Middleware do
         expect { described_class.new(->(e) { [200, {}, ['{}']] }).call(env) }.not_to raise_error
       end
     end
+
+    # Regression: bot traffic sends GET requests carrying a multipart
+    # Content-Type with a truncated/empty body; Rack raises EOFError (and
+    # Rack::Multipart::EmptyContentError on Rack >= 2.2) when the middleware
+    # forces a POST parse. Those must not bubble out of the middleware
+    # (ou HB 132640981).
+    context 'when the body cannot be parsed (empty multipart POST)' do
+      it 'does not raise and passes the request through' do
+        env = Rack::MockRequest.env_for('/degrees/nursing', method: :get,
+          'CONTENT_TYPE' => 'multipart/form-data; boundary=----scanner_boundary')
+        env['rack.input'] = StringIO.new('') # truncated body
+
+        status = nil
+        expect {
+          status, _, _ = described_class.new(->(e) { [200, {}, ['{}']] }).call(env)
+        }.not_to raise_error
+        expect(status).to eq(200)
+      end
+    end
   end
 
   describe 'converting response' do

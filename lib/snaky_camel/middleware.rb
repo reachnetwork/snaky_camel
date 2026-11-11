@@ -15,12 +15,28 @@ module SnakyCamel
       @app = app
     end
 
+    # Errors Rack raises when the request body cannot be parsed as a form.
+    # EmptyContentError does not exist on Rack < 2.2, hence the guard.
+    PARSE_ERRORS = [
+      defined?(Rack::Multipart::EmptyContentError) ? Rack::Multipart::EmptyContentError : nil,
+      EOFError
+    ].compact.freeze
+
     def call(env)
       # Transforming request
       request = Rack::Request.new(env)
 
       request.GET.deep_transform_keys!{ |k| k.is_a?(String) ? k.underscore : k }
-      request.POST.deep_transform_keys!{ |k| k.is_a?(String) ? k.underscore : k }
+      # request.POST forces a full body parse. Bot traffic sends GETs with a
+      # multipart Content-Type and a truncated/empty body (aiohttp CVE
+      # scanners), and Rack raises EOFError / Rack::Multipart::EmptyContentError
+      # out of the middleware instead of returning a 4xx (ou HB 132640981).
+      # There is nothing to transform in a body we cannot parse: skip it.
+      begin
+        request.POST.deep_transform_keys!{ |k| k.is_a?(String) ? k.underscore : k }
+      rescue *PARSE_ERRORS
+        # fall through: pass the request on untransformed
+      end
 
       sync_rack3_pair_lists(env)
 
